@@ -1,3 +1,14 @@
+/*
+libp2p = { version = "0.53.2", features = ["full"] }
+tokio = { version = "1.0", features = ["io-util", "io-std", "macros", "rt", "rt-multi-thread", "sync", "fs"] }
+serde = {version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+once_cell = "1.5"
+log = "0.4"
+pretty_env_logger = "0.4"
+futures = "0.3.30"
+tracing-subscriber = "0.3.18"
+*/
 use libp2p::{noise, ping, swarm::SwarmEvent, tcp, yamux, Multiaddr};
 use log::{error, info};
 use once_cell::sync::Lazy;
