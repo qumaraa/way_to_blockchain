@@ -38,7 +38,7 @@
 //!
 //! - `inject_event`: Обрабатывает события mDNS, такие как обнаружение и истечение срока узлов.
 
-use super::{App, Block};
+use super::{Blockchain, Block};
 use libp2p::{
     floodsub::{Floodsub, FloodsubEvent, Topic},
     identity,
@@ -97,12 +97,12 @@ pub struct AppBehaviour {
     #[behaviour(ignore)]
     pub init_sender: mpsc::UnboundedSender<bool>,
     #[behaviour(ignore)]
-    pub app: App,
+    pub app: Blockchain,
 }
 
 impl AppBehaviour {
     pub async fn new(
-        app: App,
+        app: Blockchain,
         response_sender: mpsc::UnboundedSender<ChainResponse>,
         init_sender: mpsc::UnboundedSender<bool>,
     ) -> Self {
