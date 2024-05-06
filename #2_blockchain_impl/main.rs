@@ -26,175 +26,21 @@ mod key;
 mod transaction;
 use transaction::Transaction;
 mod mempool;
+mod block;
+use block::*;
+use crate::blockchain::*;
 
-pub struct App {
-    pub mining_reward: f32,
-    pub blocks: Vec<Block>,
-}
+mod blockchain;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Block {
-    pub id: u64,
-    pub hash: String,
-    pub previous_hash: String,
-    pub timestamp: i64,
-    pub data: String,
-    pub transactions: Vec<Transaction>,
-    pub nonce: u64,
-}
 
-impl Block {
-    pub fn new(id: u64, previous_hash: String, data: String, transactions: Vec<Transaction>) -> Self {
-        let now = Utc::now();
-        let (nonce, hash) = mine_block(id, now.timestamp(), &previous_hash, &data);
-        Self {
-            id,
-            hash,
-            timestamp: now.timestamp(),
-            previous_hash,
-            data,
-            nonce,
-            transactions,
-        }
-    }
-}
-
-fn calculate_hash(id: u64, timestamp: i64, previous_hash: &str, data: &str, nonce: u64) -> Vec<u8> {
-    let data = serde_json::json!({
-        "id": id,
-        "previous_hash": previous_hash,
-        "data": data,
-        "timestamp": timestamp,
-        "nonce": nonce
-    });
-    let mut hasher = Sha256::new();
-    hasher.update(data.to_string().as_bytes());
-    hasher.finalize().as_slice().to_owned()
-}
-
-fn mine_block(id: u64, timestamp: i64, previous_hash: &str, data: &str) -> (u64, String) {
-    info!("mining block...");
-    let mut nonce = 0;
-
-    loop {
-        if nonce % 100000 == 0 {
-            info!("nonce: {}", nonce);
-        }
-        let hash = calculate_hash(id, timestamp, previous_hash, data, nonce);
-        let binary_hash = hash_to_binary_representation(&hash);
-        if binary_hash.starts_with(DIFFICULTY_PREFIX) {
-            info!(
-                "mined! nonce: {}, hash: {}, binary hash: {}",
-                nonce,
-                hex::encode(&hash),
-                binary_hash
-            );
-            return (nonce, hex::encode(hash));
-        }
-        nonce += 1;
-    }
-}
-
-fn hash_to_binary_representation(hash: &[u8]) -> String {
-    let mut res: String = String::default();
-    for c in hash {
-        res.push_str(&format!("{:b}", c));
-    }
-    res
-}
-
-impl App {
-    fn new() -> Self {
-        Self { mining_reward: 10.0, blocks: vec![] }
-    }
-
-    fn genesis(&mut self) {
-        let genesis_block = Block {
-            id: 0,
-            timestamp: Utc::now().timestamp(),
-            previous_hash: String::from("0000000000000000000000000000000000000000000000000000000000000000"),
-            nonce: 0,
-            hash: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            data: "Genesis".to_string(),
-            transactions: vec![],
-        };
-        self.blocks.push(genesis_block);
-    }
-
-    fn try_add_block(&mut self,block: Block) {
-        let latest_block = self.blocks.last().expect("there is at least one block.");
-        if self.is_block_valid(&block, latest_block) {
-            self.blocks.push(block);
-        }else {
-            error!("could not add block - invalid");
-        }
-    }
-
-    fn is_block_valid(&self, block: &Block, previous_block: &Block) -> bool {
-        if block.previous_hash != previous_block.hash {
-            warn!("block with id#{} has wrong previous hash",block.id);
-            return false;
-        }else if !hash_to_binary_representation(
-            &hex::decode(&block.hash).expect("can decode from hex"),
-        ).starts_with(DIFFICULTY_PREFIX){
-            warn!(
-                "block with id#{} is not the next block after the latest: {}",
-                block.id, previous_block.id
-            );
-            return false;
-        }else if hex::encode(calculate_hash(
-            block.id,
-            block.timestamp,
-            &block.previous_hash,
-            &block.data,
-            block.nonce,
-        )) != block.hash
-        {
-            warn!("block with id#{} has invalid hash",block.id);
-            return false;
-        }
-        true
-    }
-    fn is_chain_valid(&self, chain: &[Block]) -> bool {
-        for i in 0..chain.len() {
-            if i == 0 {
-                continue; // skip the genesis block
-            }
-            let first = chain.get(i - 1).expect("has to exist");
-            let second = chain.get(i).expect("has to exist");
-            if !self.is_block_valid(second, first) {
-                return false;
-            }
-        }
-        true
-    }
-    fn choose_chain(&mut self,local: Vec<Block>, remote: Vec<Block>) -> Vec<Block> {
-        let is_local_valid = self.is_chain_valid(&local);
-        let is_remote_valid = self.is_chain_valid(&remote);
-
-        if is_local_valid && is_remote_valid {
-            if local.len() >= remote.len() {
-                local
-            }else {
-                remote
-            }
-        }else if is_remote_valid && !is_local_valid {
-            remote
-        }else if !is_remote_valid && is_local_valid {
-            local
-        }else {
-            panic!("local and remote chains are both invalid");
-        }
-    }
-}
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /*
-     * Здесь настраивается транспорт для обмена данными между узлами. Используется TCP для обеспечения соединения между узлами.
-     * Шифрование и аутентификация осуществляются с использованием протокола шума (Noise Protocol Framework).
-     * Mplex используется для мультиплексирования потоков данных. Создается поведение приложения (AppBehaviour), которое определяет, как узлы взаимодействуют друг с другом.
+        * Здесь настраивается транспорт для обмена данными между узлами. Используется TCP для обеспечения соединения между узлами.
+        * Шифрование и аутентификация осуществляются с использованием протокола шума (Noise Protocol Framework).
+        * Mplex используется для мультиплексирования потоков данных. Создается поведение приложения (AppBehaviour), которое определяет, как узлы взаимодействуют друг с другом.
      */
 
 
@@ -212,7 +58,7 @@ async fn main() {
         .multiplex(mplex::MplexConfig::new())
         .boxed();
 
-    let behaviour = peer::AppBehaviour::new(App::new(), response_sender, init_sender.clone()).await;
+    let behaviour = peer::AppBehaviour::new(Blockchain::new(), response_sender, init_sender.clone()).await;
 
     let mut swarm = SwarmBuilder::new(transp, behaviour, *peer::PEER_ID)
         .executor(Box::new(|fut| {
